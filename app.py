@@ -19,11 +19,11 @@ def normalize(s: str) -> str:
     return s
 
 def render_row(row, prefix=""):
-    st.markdown(prefix + "**📌 Lỗi:**")
-    st.text(f"{row['TB']} — {row['MT']}")
-    st.markdown("**🛠️ Cách xử lý:**")
-    st.text(row["CXL"])
-    st.divider()
+    # Hiện câu hỏi gốc (nếu muốn)
+    st.write("**❓ Câu hỏi:** " + q_raw)
+
+    # Chỉ hiện cách xử lý
+    st.write("**✅ Trả lời:** " + row["CXL"])
 
 @st.cache_data
 def load_data():
