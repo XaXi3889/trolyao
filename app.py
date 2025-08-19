@@ -14,6 +14,12 @@ st.markdown(
         background-repeat: no-repeat; /* không lặp lại */
         background-position: center;  /* căn giữa */
         background-attachment: fixed; /* cố định khi cuộn */
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 st.title("🤖 Trợ lý ảo QCC 3")
 st.caption("Bạn chỉ cần gõ các từ khoá liên quan (không cần chính xác tuyệt đối).")
 
