@@ -1,49 +1,39 @@
 import streamlit as st
 import pandas as pd
-from rapidfuzz import process, fuzz
-from pathlib import Path
-
-EXCEL_FILE = "QCC3.xlsx"  # đổi tên file Excel thành data.xlsx cho gọn
+from rapidfuzz import process
 
 st.title("🤖 Trợ lý ảo QC C3")
 st.write("Xin chào, tôi là trợ lý ảo của bạn!")
 
-@st.cache_data(show_spinner=False)
+@st.cache_data
 def load_data():
-    file_to_read = EXCEL_FILE
-    if not Path(file_to_read).exists():
-        xlsx_files = list(Path(".").glob("*.xlsx"))
-        if not xlsx_files:
-            raise FileNotFoundError("Không tìm thấy file .xlsx trong repo.")
-        file_to_read = xlsx_files[0].name
-    df = pd.read_excel(file_to_read, engine="openpyxl")
-    df = df.fillna("")
-    df.columns = df.columns.map(str)
-    return df, file_to_read
+    # Bỏ 1 dòng đầu, lấy dòng thứ 2 làm header
+    df = pd.read_excel("QCC3.xlsx", sheet_name=0, header=1)
+    df = df.astype(str).apply(lambda x: x.str.lower().str.strip())
+    return df
 
-df, using_file = load_data()
-st.caption(f"Đang dùng dữ liệu: **{using_file}**")
+df = load_data()
 
-# Gộp toàn bộ cột để tìm gần đúng
-df["_combined_"] = df.astype(str).agg(" ".join, axis=1).str.lower()
+question = st.text_input("Bạn muốn hỏi gì?")
 
-q = st.text_input("Bạn muốn hỏi gì?")
+if question:
+    q = question.lower().strip()
 
-if q:
-    q_norm = q.lower().strip()
-    match, score, idx = process.extractOne(
-        q_norm, df["_combined_"], scorer=fuzz.token_set_ratio
-    )
+    # Ghép các cột liên quan để so sánh
+    df["combined"] = df[["Bộ phận", "THÔNG BÁO LỖI", "MÔ TẢ LỖI"]].agg(" ".join, axis=1)
 
-    if score >= 55:  # ngưỡng giống
-        st.success(f"✅ Tìm thấy lỗi gần nhất (độ giống {score:.1f}%)")
+    # Tìm dòng gần giống nhất
+    best_match = process.extractOne(q, df["combined"], score_cutoff=40)  
 
-        # Lấy cột "Cách xử lý" (bạn cần đúng tên cột trong file Excel)
-        if "Cách xử lý" in df.columns:
-            cach_xu_ly = df.iloc[idx]["Cách xử lý"]
-            st.subheader("🛠️ Cách xử lý")
-            st.write(cach_xu_ly if cach_xu_ly else "Chưa có hướng dẫn xử lý.")
-        else:
-            st.error("⚠️ Không tìm thấy cột 'Cách xử lý' trong file Excel.")
+    if best_match:
+        matched_row = df.loc[df["combined"] == best_match[0]]
+
+        st.success(f"🔑 Tôi tìm thấy kết quả gần nhất (độ giống {best_match[1]}%):")
+
+        # Hiển thị gọn: chỉ thông tin lỗi + cách xử lý
+        for idx, row in matched_row.iterrows():
+            st.write(f"**📌 Lỗi:** {row['THÔNG BÁO LỖI']} — {row['MÔ TẢ LỖI']}")
+            st.write(f"**🛠️ Cách xử lý:** {row['CÁCH XỬ LÍ']}")
+            st.write("---")
     else:
-        st.error("❌ Không tìm thấy kết quả phù hợp. Hãy thử từ khóa khác.")
+        st.error("Xin lỗi, tôi không tìm thấy thông tin liên quan.")
