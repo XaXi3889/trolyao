@@ -2,27 +2,35 @@ import re
 import unicodedata
 import streamlit as st
 import pandas as pd
-from rapidfuzz import process, fuzz
+from rapidfuzz import fuzz, process
 
 st.set_page_config(page_title="Trợ lý ảo QC C3", layout="centered")
 st.title("🤖 Trợ lý ảo QC C3")
-st.caption("Gõ từ khoá gần giống (ví dụ: 'mất đèn xanh trolley')")
+st.caption("Gõ từ khoá gần giống. App sẽ ưu tiên khớp chính xác trước khi dùng fuzzy.")
 
-# ---------- Helpers ----------
+# ============ Helpers ============
 def normalize(s: str) -> str:
+    """Bỏ dấu, bỏ ký tự đặc biệt, viết thường, rút gọn khoảng trắng."""
     s = unicodedata.normalize('NFD', str(s))
-    s = ''.join(ch for ch in s if unicodedata.category(ch) != 'Mn')  # bỏ dấu
+    s = ''.join(ch for ch in s if unicodedata.category(ch) != 'Mn')  # remove accents
     s = s.lower()
-    s = re.sub(r"[^a-z0-9\s]", " ", s)  # bỏ ký tự đặc biệt
+    s = re.sub(r"[^a-z0-9\s]", " ", s)  # strip non-alnum
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
+def render_row(row, prefix=""):
+    st.markdown(prefix + "**📌 Lỗi:**")
+    st.text(f"{row['TB']} — {row['MT']}")
+    st.markdown("**🛠️ Cách xử lý:**")
+    st.text(row["CXL"])
+    st.divider()
+
 @st.cache_data
 def load_data():
-    # Header ở dòng 2 của Excel
+    # Header ở dòng 2
     df = pd.read_excel("QCC3.xlsx", sheet_name=0, header=1)
 
-    # Chuẩn hoá tên cột để dò đúng các cột cần thiết
+    # Tìm tên cột theo dạng chuẩn hoá để tránh sai chính tả/dấu
     cols_norm = {normalize(c): c for c in df.columns}
     try:
         col_bp  = cols_norm[[k for k in cols_norm if "bo phan" in k][0]]
@@ -30,11 +38,10 @@ def load_data():
         col_mt  = cols_norm[[k for k in cols_norm if "mo ta loi" in k][0]]
         col_cxl = cols_norm[[k for k in cols_norm if ("cach xu li" in k or "cach xu ly" in k)][0]]
     except IndexError:
-        st.error("Không tìm thấy đủ các cột 'Bộ phận' / 'THÔNG BÁO LỖI' / 'MÔ TẢ LỖI' / 'CÁCH XỬ LÍ' trong file Excel.")
+        st.error("Thiếu cột: 'Bộ phận' / 'THÔNG BÁO LỖI' / 'MÔ TẢ LỖI' / 'CÁCH XỬ LÍ' trong Excel.")
         st.stop()
 
     df = df.rename(columns={col_bp:"BP", col_tb:"TB", col_mt:"MT", col_cxl:"CXL"})
-
     for c in ["BP", "TB", "MT", "CXL"]:
         df[c] = df[c].astype(str).fillna("")
 
@@ -45,32 +52,50 @@ def load_data():
 df = load_data()
 
 q_raw = st.text_input("Bạn muốn hỏi gì?")
+strict = st.toggle("Chế độ nghiêm ngặt (chỉ trả về khi rất giống)", value=False)
+
 if q_raw:
     q = normalize(q_raw)
 
-    # Điểm có trọng số: ưu tiên 'THÔNG BÁO LỖI' (70%) + 'MÔ TẢ LỖI' (30%)
-    title_matches = process.extract(q, df["TB_clean"], scorer=fuzz.token_set_ratio, limit=20)
-    desc_matches  = process.extract(q, df["MT_clean"], scorer=fuzz.token_set_ratio, limit=20)
+    # ---------- B1: Khớp CHÍNH XÁC ----------
+    exact_mask = (df["TB_clean"] == q) | (df["MT_clean"] == q)
+    exact_rows = df[exact_mask]
+    if not exact_rows.empty:
+        st.success(f"Khớp chính xác {len(exact_rows)} kết quả.")
+        for _, r in exact_rows.iterrows():
+            render_row(r, prefix="✅ ")
+        st.stop()
 
-    scores = {}
-    for _, s, idx in title_matches:
-        scores[idx] = scores.get(idx, 0) + 0.7 * s
-    for _, s, idx in desc_matches:
-        scores[idx] = scores.get(idx, 0) + 0.3 * s
+    # ---------- B2: Khớp chứa NGUYÊN TỪ ----------
+    # an toàn vì ta đã normalize (chỉ còn a-z0-9 và space)
+    patt = rf"\b{re.escape(q)}\b"
+    contains_mask = df["TB_clean"].str.contains(patt) | df["MT_clean"].str.contains(patt)
+    contain_rows = df[contains_mask]
+    if not contain_rows.empty:
+        st.info(f"Tìm thấy {len(contain_rows)} kết quả chứa nguyên từ.")
+        # sắp xếp theo độ dài phần mô tả gần nhất với truy vấn (ngắn hơn thường sát hơn)
+        contain_rows = contain_rows.assign(
+            closeness=contain_rows.apply(
+                lambda r: min(abs(len(r["TB_clean"]) - len(q)), abs(len(r["MT_clean"]) - len(q))), axis=1
+            )
+        ).sort_values("closeness")
+        for _, r in contain_rows.head(3).iterrows():  # giới hạn 3 dòng
+            render_row(r, prefix="🔎 ")
+        st.stop()
 
-    # Lấy top 3 (hoặc đổi [:1] nếu muốn chỉ 1 dòng)
-    top = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:3]
+    # ---------- B3: Fuzzy (rơi xuống cuối) ----------
+    # Điểm tối đa giữa TB và MT, có trọng số ưu tiên TB
+    title_scores = df["TB_clean"].apply(lambda s: fuzz.token_set_ratio(q, s))
+    desc_scores  = df["MT_clean"].apply(lambda s: fuzz.token_set_ratio(q, s))
+    final_score  = 0.7 * title_scores + 0.3 * desc_scores
+    df_scored = df.assign(score=final_score).sort_values("score", ascending=False)
 
-    if not top or top[0][1] < 55:
-        st.error("Chưa tìm được kết quả đủ giống. Hãy thêm từ khoá đặc thù (trolley, gantry, đèn xanh/đỏ, limit…).")
+    cutoff = 85 if strict else 60
+    top = df_scored[df_scored["score"] >= cutoff].head(3)
+
+    if top.empty:
+        st.error("Chưa tìm được kết quả đủ giống. Hãy thêm vài từ khoá đặc thù (trolley, gantry, đèn xanh/đỏ, limit…).")
     else:
-        st.success(f"Đã tìm thấy {len(top)} kết quả gần nhất (độ giống cao nhất ~{top[0][1]:.0f}%).")
-        for rank, (idx, score) in enumerate(top, 1):
-            row = df.loc[idx]
-            st.markdown(f"**#{rank} • Độ giống ~{score:.0f}%**")
-            # Dùng st.text để tránh lỗi autolink/regex trên mobile
-            st.markdown("**📌 Lỗi:**")
-            st.text(f"{row['TB']} — {row['MT']}")
-            st.markdown("**🛠️ Cách xử lý:**")
-            st.text(row["CXL"])
-            st.divider()
+        st.success(f"Top {len(top)} kết quả gần nhất (độ giống cao nhất ~{top.iloc[0]['score']:.0f}%).")
+        for _, r in top.iterrows():
+            render_row(r, prefix=f"⭐ (~{r['score']:.0f}%) ")
