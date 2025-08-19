@@ -5,6 +5,15 @@ import pandas as pd
 from rapidfuzz import fuzz
 
 st.set_page_config(page_title="Trợ lý ảo QCC 3", layout="centered")
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background-image: url("hinh-nen-may-tinh-4k-57.jpg");
+        background-size: contain;     /* cover = full màn hình, contain = vừa khung */
+        background-repeat: no-repeat; /* không lặp lại */
+        background-position: center;  /* căn giữa */
+        background-attachment: fixed; /* cố định khi cuộn */
 st.title("🤖 Trợ lý ảo QCC 3")
 st.caption("Bạn chỉ cần gõ các từ khoá liên quan (không cần chính xác tuyệt đối).")
 
