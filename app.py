@@ -5,7 +5,7 @@ import pandas as pd
 from rapidfuzz import fuzz
 
 st.set_page_config(page_title="Trợ lý ảo QCC 3", layout="centered")
-st.title("🤖 Trợ lý ảo QC C3")
+st.title("🤖 Trợ lý ảo QCC 3")
 st.caption("Bạn chỉ cần gõ các từ khoá liên quan (không cần chính xác tuyệt đối).")
 
 # ============ Helpers ============
