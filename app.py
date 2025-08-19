@@ -18,7 +18,7 @@ query = st.text_input("Bạn muốn hỏi gì?")
 
 if query:
     # Lấy danh sách các lỗi từ file
-    errors = df["THỐNG KÊ LỖI VÀ CÁCH XỬ LÝ"].astype(str).tolist()
+    errors = df["QCC3.xlsx"].astype(str).tolist()
 
     # Tìm kết quả gần giống nhất
     best_match, score, idx = process.extractOne(
