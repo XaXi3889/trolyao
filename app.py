@@ -2,11 +2,11 @@ import re
 import unicodedata
 import streamlit as st
 import pandas as pd
-from rapidfuzz import fuzz, process
+from rapidfuzz import fuzz
 
 st.set_page_config(page_title="Trợ lý ảo QC C3", layout="centered")
 st.title("🤖 Trợ lý ảo QC C3")
-st.caption("Gõ từ khoá gần giống. App sẽ ưu tiên khớp chính xác trước khi dùng fuzzy.")
+st.caption("Nhập từ khoá gần giống. App sẽ ưu tiên khớp chính xác trước khi dùng fuzzy.")
 
 # ============ Helpers ============
 def normalize(s: str) -> str:
@@ -19,11 +19,10 @@ def normalize(s: str) -> str:
     return s
 
 def render_row(row, prefix=""):
-    # Hiện câu hỏi gốc (nếu muốn)
-    st.write("**❓ Câu hỏi:** " + q_raw)
-
-    # Chỉ hiện cách xử lý
-    st.write("**✅ Trả lời:** " + row["CXL"])
+    # Hiện mô tả lỗi và cách xử lý
+    st.write("**⚠️ Mô tả lỗi:** " + row["MT"])
+    st.write("**🛠️ Cách xử lý:** " + row["CXL"])
+    st.markdown("---")
 
 @st.cache_data
 def load_data():
@@ -61,30 +60,25 @@ if q_raw:
     exact_mask = (df["TB_clean"] == q) | (df["MT_clean"] == q)
     exact_rows = df[exact_mask]
     if not exact_rows.empty:
-        st.success(f"Khớp chính xác {len(exact_rows)} kết quả.")
         for _, r in exact_rows.iterrows():
             render_row(r, prefix="✅ ")
         st.stop()
 
     # ---------- B2: Khớp chứa NGUYÊN TỪ ----------
-    # an toàn vì ta đã normalize (chỉ còn a-z0-9 và space)
     patt = rf"\b{re.escape(q)}\b"
     contains_mask = df["TB_clean"].str.contains(patt) | df["MT_clean"].str.contains(patt)
     contain_rows = df[contains_mask]
     if not contain_rows.empty:
-        st.info(f"Tìm thấy {len(contain_rows)} kết quả chứa nguyên từ.")
-        # sắp xếp theo độ dài phần mô tả gần nhất với truy vấn (ngắn hơn thường sát hơn)
         contain_rows = contain_rows.assign(
             closeness=contain_rows.apply(
                 lambda r: min(abs(len(r["TB_clean"]) - len(q)), abs(len(r["MT_clean"]) - len(q))), axis=1
             )
         ).sort_values("closeness")
-        for _, r in contain_rows.head(3).iterrows():  # giới hạn 3 dòng
+        for _, r in contain_rows.head(3).iterrows():
             render_row(r, prefix="🔎 ")
         st.stop()
 
-    # ---------- B3: Fuzzy (rơi xuống cuối) ----------
-    # Điểm tối đa giữa TB và MT, có trọng số ưu tiên TB
+    # ---------- B3: Fuzzy ----------
     title_scores = df["TB_clean"].apply(lambda s: fuzz.token_set_ratio(q, s))
     desc_scores  = df["MT_clean"].apply(lambda s: fuzz.token_set_ratio(q, s))
     final_score  = 0.7 * title_scores + 0.3 * desc_scores
@@ -94,8 +88,7 @@ if q_raw:
     top = df_scored[df_scored["score"] >= cutoff].head(3)
 
     if top.empty:
-        st.error("Chưa tìm được kết quả đủ giống. Hãy thêm vài từ khoá đặc thù (trolley, gantry, đèn xanh/đỏ, limit…).")
+        st.error("❌ Không tìm được kết quả đủ giống. Hãy nhập thêm từ khoá đặc thù (trolley, gantry, limit...).")
     else:
-        st.success(f"Top {len(top)} kết quả gần nhất (độ giống cao nhất ~{top.iloc[0]['score']:.0f}%).")
         for _, r in top.iterrows():
             render_row(r, prefix=f"⭐ (~{r['score']:.0f}%) ")
