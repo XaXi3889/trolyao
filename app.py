@@ -19,13 +19,17 @@ if question:
     q = question.lower().strip()
 
     # Ghép tất cả các cột thành 1 chuỗi để tìm
-    df["combined"] = df.apply(lambda row: " ".join(row.values), axis=1)
+    combined = df.apply(lambda row: " ".join(row.values), axis=1)
 
-    # fuzzy search: lấy ra những dòng có độ giống nhau > 70
-    matches = df[df["combined"].apply(lambda x: fuzz.partial_ratio(q, x) > 70)]
+    # Lấy ra kết quả gần nhất
+    best_match = process.extractOne(q, combined, scorer=fuzz.partial_ratio)
 
-    if not matches.empty:
-        st.success("Tôi tìm thấy thông tin gần giống sau:")
-        st.dataframe(matches)
+    if best_match:
+        matched_text, score, idx = best_match
+        if score >= 60:   # ngưỡng độ giống (có thể chỉnh 50–70)
+            st.success(f"🔎 Tôi tìm thấy kết quả gần nhất (độ giống {score}%):")
+            st.dataframe(df.iloc[[idx]])
+        else:
+            st.error("Xin lỗi, tôi không tìm thấy thông tin phù hợp.")
     else:
-        st.error("Xin lỗi, tôi không tìm thấy thông tin liên quan.")
+        st.error("Xin lỗi, tôi không tìm thấy thông tin phù hợp.")
