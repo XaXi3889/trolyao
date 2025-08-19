@@ -4,13 +4,24 @@ import streamlit as st
 import pandas as pd
 from rapidfuzz import fuzz
 
+# ================== CONFIG ==================
 st.set_page_config(page_title="Trợ lý ảo QC C3", layout="centered")
 st.title("🤖 Trợ lý ảo QC C3")
-st.caption("Bạn chỉ cần gõ các từ khoá liên quan (không cần chính xác tuyệt đối).")
+st.caption("Nhập từ khoá gần giống. App sẽ ưu tiên khớp chính xác trước khi fuzzy.")
 
-# ============ Helpers ============
+# Ẩn khung lỗi mặc định của Streamlit
+st.markdown(
+    """
+    <style>
+    .stAlert {display: none;} /* ẩn lỗi mặc định */
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# ================== HELPERS ==================
 def normalize(s: str) -> str:
-    """Bỏ dấu, ký tự đặc biệt, viết thường, rút gọn khoảng trắng."""
+    """Bỏ dấu, ký tự đặc biệt, viết thường, rút gọn khoảng trắng"""
     s = unicodedata.normalize('NFD', str(s))
     s = ''.join(ch for ch in s if unicodedata.category(ch) != 'Mn')
     s = s.lower()
@@ -19,62 +30,69 @@ def normalize(s: str) -> str:
     return s
 
 def render_row(row, prefix=""):
-    st.markdown(prefix + "**📌 Lỗi:**")
-    st.text(f"{row['TB']} — {row['MT']}")
-    st.markdown("**🛠️ Cách xử lý:**")
-    st.text(row["CXL"])
+    st.markdown(prefix + "**📌 Lỗi:** " + row['TB'])
+    st.markdown("**🛠️ Cách xử lý:** " + row['CXL'])
     st.divider()
 
 @st.cache_data
 def load_data():
     df = pd.read_excel("QCC3.xlsx", sheet_name=0, header=1)
+
     # Chuẩn hoá tên cột
     cols_norm = {normalize(c): c for c in df.columns}
-    col_bp  = cols_norm[[k for k in cols_norm if "bo phan" in k][0]]
     col_tb  = cols_norm[[k for k in cols_norm if "thong bao loi" in k][0]]
     col_mt  = cols_norm[[k for k in cols_norm if "mo ta loi" in k][0]]
     col_cxl = cols_norm[[k for k in cols_norm if ("cach xu li" in k or "cach xu ly" in k)][0]]
 
-    df = df.rename(columns={col_bp:"BP", col_tb:"TB", col_mt:"MT", col_cxl:"CXL"})
-    for c in ["BP", "TB", "MT", "CXL"]:
+    df = df.rename(columns={col_tb:"TB", col_mt:"MT", col_cxl:"CXL"})
+    for c in ["TB", "MT", "CXL"]:
         df[c] = df[c].astype(str).fillna("")
 
     df["TB_clean"] = df["TB"].map(normalize)
     df["MT_clean"] = df["MT"].map(normalize)
-    return df[["BP", "TB", "MT", "CXL", "TB_clean", "MT_clean"]]
+    return df[["TB", "MT", "CXL", "TB_clean", "MT_clean"]]
 
-df = load_data()
+# ================== MAIN ==================
+try:
+    df = load_data()
 
-# =================== Search ===================
-q_raw = st.text_input("Bạn muốn hỏi gì?")
-if q_raw:
-    q = normalize(q_raw)
-    keywords = q.split()  # tách thành nhiều từ
+    q_raw = st.text_input("👉 Bạn muốn hỏi gì?")
+    strict = st.toggle("Chế độ nghiêm ngặt (chỉ trả về khi rất giống)", value=False)
 
-    # ---------- B1: Tìm các dòng chứa TẤT CẢ từ khoá ----------
-    def row_match_all(row):
-        combined = row["TB_clean"] + " " + row["MT_clean"]
-        return all(kw in combined for kw in keywords)
+    if q_raw:
+        q = normalize(q_raw)
 
-    matched = df[df.apply(row_match_all, axis=1)]
+        # ---- B1: Exact match ----
+        exact_mask = (df["TB_clean"] == q) | (df["MT_clean"] == q)
+        exact_rows = df[exact_mask]
+        if not exact_rows.empty:
+            for _, r in exact_rows.iterrows():
+                render_row(r, prefix="✅ ")
+            st.stop()
 
-    if not matched.empty:
-        st.success(f"Tìm thấy {len(matched)} kết quả khớp tất cả từ khóa.")
-        for _, r in matched.head(3).iterrows():
-            render_row(r, prefix="✅ ")
-        st.stop()
+        # ---- B2: Contains ----
+        patt = re.escape(q)  # tránh lỗi regex
+        contains_mask = df["TB_clean"].str.contains(patt) | df["MT_clean"].str.contains(patt)
+        contain_rows = df[contains_mask]
+        if not contain_rows.empty:
+            for _, r in contain_rows.head(3).iterrows():
+                render_row(r, prefix="🔎 ")
+            st.stop()
 
-    # ---------- B2: Fuzzy fallback ----------
-    def fuzzy_score(row):
-        combined = row["TB_clean"] + " " + row["MT_clean"]
-        return fuzz.token_set_ratio(q, combined)
+        # ---- B3: Fuzzy ----
+        title_scores = df["TB_clean"].apply(lambda s: fuzz.token_set_ratio(q, s))
+        desc_scores  = df["MT_clean"].apply(lambda s: fuzz.token_set_ratio(q, s))
+        final_score  = 0.7 * title_scores + 0.3 * desc_scores
+        df_scored = df.assign(score=final_score).sort_values("score", ascending=False)
 
-    df["score"] = df.apply(fuzzy_score, axis=1)
-    top = df.sort_values("score", ascending=False).head(3)
+        cutoff = 85 if strict else 60
+        top = df_scored[df_scored["score"] >= cutoff].head(3)
 
-    if top.iloc[0]["score"] < 60:
-        st.error("Không tìm thấy kết quả đủ giống. Thử nhập từ khoá đặc thù hơn.")
-    else:
-        st.info(f"Top {len(top)} kết quả gần nhất:")
-        for _, r in top.iterrows():
-            render_row(r, prefix=f"⭐ ({r['score']:.0f}%) ")
+        if top.empty:
+            st.warning("⚠️ Chưa tìm được kết quả phù hợp. Hãy nhập thêm từ khoá đặc thù.")
+        else:
+            for _, r in top.iterrows():
+                render_row(r, prefix=f"⭐ (~{r['score']:.0f}%) ")
+
+except Exception:
+    st.error("⚠️ Xin lỗi, đã xảy ra lỗi. Vui lòng thử lại.")
