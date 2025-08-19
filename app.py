@@ -7,7 +7,7 @@ st.write("Xin chào, tôi là trợ lý ảo của bạn!")
 # Đọc file Excel
 @st.cache_data
 def load_data():
-    return pd.read_excel("THỐNG KÊ LỖI QCC3.xlsx")
+    return pd.read_excel("QCC3.xlsx")
 
 df = load_data()
 
