@@ -2,11 +2,11 @@ import re
 import unicodedata
 import streamlit as st
 import pandas as pd
-from rapidfuzz import fuzz, process
+from rapidfuzz import fuzz
 
 st.set_page_config(page_title="Trợ lý ảo QC C3", layout="centered")
 st.title("🤖 Trợ lý ảo QC C3")
-st.caption("Gõ từ khoá gần giống. App sẽ ưu tiên khớp chính xác trước khi dùng fuzzy.")
+st.caption("Gõ từ khoá gần giống. App sẽ ưu tiên khớp chính xác hoặc chứa, sau đó mới dùng fuzzy.")
 
 # ============ Helpers ============
 def normalize(s: str) -> str:
@@ -57,23 +57,22 @@ strict = st.toggle("Chế độ nghiêm ngặt (chỉ trả về khi rất giố
 if q_raw:
     q = normalize(q_raw)
 
-    # ---------- B1: Khớp CHÍNH XÁC ----------
-    exact_mask = (df["TB_clean"] == q) | (df["MT_clean"] == q)
-    exact_rows = df[exact_mask]
+    # ---------- B1: Khớp chính xác hoặc CHỨA (cả 2 chiều) ----------
+    mask_exact = (df["TB_clean"] == q) | (df["MT_clean"] == q)
+    mask_contained = df["TB_clean"].apply(lambda s: s in q) | df["MT_clean"].apply(lambda s: s in q)
+    exact_rows = df[mask_exact | mask_contained]
     if not exact_rows.empty:
-        st.success(f"Khớp chính xác {len(exact_rows)} kết quả.")
+        st.success(f"Khớp chính xác / chứa ({len(exact_rows)} kết quả).")
         for _, r in exact_rows.iterrows():
             render_row(r, prefix="✅ ")
         st.stop()
 
-    # ---------- B2: Khớp chứa NGUYÊN TỪ ----------
-    # an toàn vì ta đã normalize (chỉ còn a-z0-9 và space)
-    patt = rf"\b{re.escape(q)}\b"
-    contains_mask = df["TB_clean"].str.contains(patt) | df["MT_clean"].str.contains(patt)
+    # ---------- B2: Khớp chứa CHUỖI (không regex) ----------
+    contains_mask = df["TB_clean"].str.contains(q, case=False, regex=False) | \
+                    df["MT_clean"].str.contains(q, case=False, regex=False)
     contain_rows = df[contains_mask]
     if not contain_rows.empty:
-        st.info(f"Tìm thấy {len(contain_rows)} kết quả chứa nguyên từ.")
-        # sắp xếp theo độ dài phần mô tả gần nhất với truy vấn (ngắn hơn thường sát hơn)
+        st.info(f"Tìm thấy {len(contain_rows)} kết quả chứa.")
         contain_rows = contain_rows.assign(
             closeness=contain_rows.apply(
                 lambda r: min(abs(len(r["TB_clean"]) - len(q)), abs(len(r["MT_clean"]) - len(q))), axis=1
@@ -83,8 +82,7 @@ if q_raw:
             render_row(r, prefix="🔎 ")
         st.stop()
 
-    # ---------- B3: Fuzzy (rơi xuống cuối) ----------
-    # Điểm tối đa giữa TB và MT, có trọng số ưu tiên TB
+    # ---------- B3: Fuzzy (cuối cùng) ----------
     title_scores = df["TB_clean"].apply(lambda s: fuzz.token_set_ratio(q, s))
     desc_scores  = df["MT_clean"].apply(lambda s: fuzz.token_set_ratio(q, s))
     final_score  = 0.7 * title_scores + 0.3 * desc_scores
