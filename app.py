@@ -59,9 +59,10 @@ if q_raw:
     matched = df[df.apply(row_match_all, axis=1)]
 
     if not matched.empty:
-        st.success(f"Tìm thấy {len(matched)} kết quả khớp tất cả từ khóa.")
-        for _, r in matched.head(3).iterrows():
-            render_row(r, prefix="✅ ")
+        # lấy kết quả đầu tiên
+        best = matched.iloc[0]
+        st.success("✅ Tìm thấy kết quả khớp tất cả từ khóa.")
+        render_row(best, prefix="✅ ")
         st.stop()
 
     # ---------- B2: Fuzzy fallback ----------
@@ -70,11 +71,10 @@ if q_raw:
         return fuzz.token_set_ratio(q, combined)
 
     df["score"] = df.apply(fuzzy_score, axis=1)
-    top = df.sort_values("score", ascending=False).head(3)
+    best = df.sort_values("score", ascending=False).iloc[0]
 
-    if top.iloc[0]["score"] < 60:
+    if best["score"] < 60:
         st.error("Không tìm thấy kết quả đủ giống. Thử nhập từ khoá đặc thù hơn.")
     else:
-        st.info(f"Top {len(top)} kết quả gần nhất:")
-        for _, r in top.iterrows():
-            render_row(r, prefix=f"⭐ ({r['score']:.0f}%) ")
+        st.info(f"Kết quả giống nhất (~{best['score']:.0f}%):")
+        render_row(best, prefix="⭐ ")
