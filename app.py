@@ -1,25 +1,31 @@
 import streamlit as st
 import pandas as pd
+from rapidfuzz import fuzz, process   # fuzzy search
 
 st.title("🤖 Trợ lý ảo QC C3")
 st.write("Xin chào, tôi là trợ lý ảo của bạn!")
 
-# Đọc file Excel
 @st.cache_data
 def load_data():
-    return pd.read_excel("QCC3.xlsx")
+    df = pd.read_excel("thongke_loi_qcc3.xlsx", sheet_name=0)
+    df = df.astype(str).apply(lambda x: x.str.lower().str.strip())
+    return df
 
 df = load_data()
 
-# Cho phép người dùng nhập câu hỏi
 question = st.text_input("Bạn muốn hỏi gì?")
 
 if question:
-    # Tìm kiếm trong dữ liệu
-    ket_qua = df[df.apply(lambda row: row.astype(str).str.contains(question, case=False).any(), axis=1)]
-    
-    if not ket_qua.empty:
-        st.success("Tôi tìm thấy thông tin sau:")
-        st.dataframe(ket_qua)
+    q = question.lower().strip()
+
+    # Ghép tất cả các cột thành 1 chuỗi để tìm
+    df["combined"] = df.apply(lambda row: " ".join(row.values), axis=1)
+
+    # fuzzy search: lấy ra những dòng có độ giống nhau > 70
+    matches = df[df["combined"].apply(lambda x: fuzz.partial_ratio(q, x) > 70)]
+
+    if not matches.empty:
+        st.success("Tôi tìm thấy thông tin gần giống sau:")
+        st.dataframe(matches)
     else:
         st.error("Xin lỗi, tôi không tìm thấy thông tin liên quan.")
