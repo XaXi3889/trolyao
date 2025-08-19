@@ -9,12 +9,11 @@ st.markdown(
     """
     <style>
     .stApp {
-        background-image: url("hinh-nen-may-tinh-4k-57.jpg");
-        background-size: contain;     /* cover = full màn hình, contain = vừa khung */
-        background-repeat: no-repeat; /* không lặp lại */
-        background-position: center;  /* căn giữa */
-        background-attachment: fixed; /* cố định khi cuộn */
-        }
+        background-image: url("https://sp-ao.shortpixel.ai/client/to_webp,q_glossy,ret_img,w_2152,h_972/https://danangport.com/wp-content/uploads/2023/09/w-cang-bien2-1-438.jpg");
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
+    }
     </style>
     """,
     unsafe_allow_html=True
