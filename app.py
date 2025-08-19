@@ -1,5 +1,4 @@
-import re
-import unicodedata
+import re, unicodedata
 import streamlit as st
 import pandas as pd
 from rapidfuzz import fuzz
@@ -10,76 +9,53 @@ st.caption("Bạn chỉ cần gõ các từ khoá liên quan (không cần chín
 
 # ============ Helpers ============
 def normalize(s: str) -> str:
-    """Bỏ dấu, ký tự đặc biệt, viết thường, rút gọn khoảng trắng."""
     s = unicodedata.normalize('NFD', str(s))
     s = ''.join(ch for ch in s if unicodedata.category(ch) != 'Mn')
-    s = s.lower()
-    s = re.sub(r"[^a-z0-9\s]", " ", s)
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]", " ", s.lower())).strip()
 
-def render_row(row, prefix=""):
-    st.markdown(
-        f"""
-        <div style="padding:12px; border-radius:12px; background:#f8f9fa; margin-bottom:12px; box-shadow:0 2px 6px rgba(0,0,0,0.08)">
-            <p style="margin:0; font-weight:bold; color:#d6336c;">📌 Lỗi:</p>
-            <p style="margin:4px 0; font-size:15px;">{row['TB']} — {row['MT']}</p>
-            <p style="margin:0; font-weight:bold; color:#2f9e44;">🛠️ Cách xử lý:</p>
-            <p style="margin:4px 0; font-size:15px; white-space:pre-line;">{row['CXL']}</p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+def render_row(row):
+    st.markdown(f"""
+    <div style="padding:12px; border-radius:12px; background:#f8f9fa; margin-bottom:12px; box-shadow:0 2px 6px rgba(0,0,0,0.08)">
+        <p style="margin:0; font-weight:bold; color:#d6336c;">📌 Lỗi:</p>
+        <p style="margin:4px 0; font-size:15px;">{row['TB']} — {row['MT']}</p>
+        <p style="margin:0; font-weight:bold; color:#2f9e44;">🛠️ Cách xử lý:</p>
+        <p style="margin:4px 0; font-size:15px; white-space:pre-line;">{row['CXL']}</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 @st.cache_data
 def load_data():
     df = pd.read_excel("QCC3.xlsx", sheet_name=0, header=1)
-    # Chuẩn hoá tên cột
-    cols_norm = {normalize(c): c for c in df.columns}
-    col_bp  = cols_norm[[k for k in cols_norm if "bo phan" in k][0]]
-    col_tb  = cols_norm[[k for k in cols_norm if "thong bao loi" in k][0]]
-    col_mt  = cols_norm[[k for k in cols_norm if "mo ta loi" in k][0]]
-    col_cxl = cols_norm[[k for k in cols_norm if ("cach xu li" in k or "cach xu ly" in k)][0]]
-
-    df = df.rename(columns={col_bp:"BP", col_tb:"TB", col_mt:"MT", col_cxl:"CXL"})
-    for c in ["BP", "TB", "MT", "CXL"]:
-        df[c] = df[c].astype(str).fillna("")
-
-    df["TB_clean"] = df["TB"].map(normalize)
-    df["MT_clean"] = df["MT"].map(normalize)
-    return df[["BP", "TB", "MT", "CXL", "TB_clean", "MT_clean"]]
+    cols = {normalize(c): c for c in df.columns}
+    mapping = {
+        "BP":  [k for k in cols if "bo phan" in k][0],
+        "TB":  [k for k in cols if "thong bao loi" in k][0],
+        "MT":  [k for k in cols if "mo ta loi" in k][0],
+        "CXL": [k for k in cols if "cach xu l" in k][0],
+    }
+    df = df.rename(columns={v: k for k, v in mapping.items()})
+    for c in ["BP","TB","MT","CXL"]: df[c] = df[c].astype(str).fillna("")
+    df["TB_clean"], df["MT_clean"] = df["TB"].map(normalize), df["MT"].map(normalize)
+    return df[["BP","TB","MT","CXL","TB_clean","MT_clean"]]
 
 df = load_data()
 
 # =================== Search ===================
 q_raw = st.text_input("Bạn muốn hỏi gì? (gõ từ khoá lỗi)", placeholder="VD: Ngáng mắt đèn xanh")
 if q_raw:
-    q = normalize(q_raw)
-    keywords = q.split()
+    q, keywords = normalize(q_raw), normalize(q_raw).split()
 
-    # ---------- B1: Khớp từ khoá ----------
-    def row_match_all(row):
-        combined = row["TB_clean"] + " " + row["MT_clean"]
-        return all(kw in combined for kw in keywords)
-
-    matched = df[df.apply(row_match_all, axis=1)]
-
+    # B1: Exact match
+    matched = df[df.apply(lambda r: all(kw in (r["TB_clean"]+" "+r["MT_clean"]) for kw in keywords), axis=1)]
     if not matched.empty:
-        best = matched.iloc[0]
         st.success("✅ Tìm thấy kết quả phù hợp.")
-        render_row(best, prefix="✅ ")
-        st.stop()
-
-    # ---------- B2: Fuzzy ----------
-    def fuzzy_score(row):
-        combined = row["TB_clean"] + " " + row["MT_clean"]
-        return fuzz.token_set_ratio(q, combined)
-
-    df["score"] = df.apply(fuzzy_score, axis=1)
-    best = df.sort_values("score", ascending=False).iloc[0]
-
-    if best["score"] < 60:
-        st.warning("⚠️ Không tìm thấy kết quả phù hợp. Vui lòng nhập từ khóa đặc thù hơn.")
+        render_row(matched.iloc[0])
     else:
-        st.success("⭐ Kết quả gần nhất:")
-        render_row(best, prefix="⭐ ")
+        # B2: Fuzzy
+        df["score"] = df.apply(lambda r: fuzz.token_set_ratio(q, r["TB_clean"]+" "+r["MT_clean"]), axis=1)
+        best = df.loc[df["score"].idxmax()]
+        if best["score"] < 60:
+            st.warning("⚠️ Không tìm thấy kết quả phù hợp. Vui lòng nhập từ khóa đặc thù hơn.")
+        else:
+            st.success("⭐ Kết quả gần nhất:")
+            render_row(best)
