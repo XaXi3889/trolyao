@@ -7,7 +7,7 @@ st.write("Xin chào, tôi là trợ lý ảo của bạn!")
 
 @st.cache_data
 def load_data():
-    df = pd.read_excel("thongke_loi_qcc3.xlsx", sheet_name=0)
+    df = pd.read_excel("QCC3.xlsx", sheet_name=0)
     df = df.astype(str).apply(lambda x: x.str.lower().str.strip())
     return df
 
