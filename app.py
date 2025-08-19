@@ -3,21 +3,29 @@ import unicodedata
 import streamlit as st
 import pandas as pd
 from rapidfuzz import fuzz
+import base64   # 👈 thêm dòng này
 
 st.set_page_config(page_title="Trợ lý ảo QCC 3", layout="centered")
-st.markdown(
-    """
+
+# === Hàm set background từ file ảnh local ===
+def set_bg_from_local(image_file):
+    with open(image_file, "rb") as f:
+        data = f.read()
+    encoded = base64.b64encode(data).decode()
+    css = f"""
     <style>
-    .stApp {
-        background-image: url("https://sp-ao.shortpixel.ai/client/to_webp,q_glossy,ret_img,w_2152,h_972/https://danangport.com/wp-content/uploads/2023/09/w-cang-bien2-1-438.jpg");
+    .stApp {{
+        background-image: url("data:image/jpg;base64,{encoded}");
         background-size: cover;
         background-position: center;
         background-attachment: fixed;
-    }
+    }}
     </style>
-    """,
-    unsafe_allow_html=True
-)
+    """
+    st.markdown(css, unsafe_allow_html=True)
+
+# Gọi hàm để set background
+set_bg_from_local("hinh-nen-may-tinh-4k-57.jpg")
 
 st.title("🤖 Trợ lý ảo QCC 3")
 st.caption("Bạn chỉ cần gõ các từ khoá liên quan (không cần chính xác tuyệt đối).")
