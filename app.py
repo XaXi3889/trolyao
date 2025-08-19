@@ -30,10 +30,10 @@ if question:
 
         st.success(f"🔑 Tôi tìm thấy kết quả gần nhất (độ giống {best_match[1]}%):")
 
-        # Hiển thị gọn: chỉ thông tin lỗi + cách xử lý
+        # Hiển thị gọn, dùng st.text để tránh lỗi regex trên mobile
         for idx, row in matched_row.iterrows():
-            st.write(f"**📌 Lỗi:** {row['THÔNG BÁO LỖI']} — {row['MÔ TẢ LỖI']}")
-            st.write(f"**🛠️ Cách xử lý:** {row['CÁCH XỬ LÍ']}")
-            st.write("---")
+            st.text(f"📌 Lỗi: {row['THÔNG BÁO LỖI']} — {row['MÔ TẢ LỖI']}")
+            st.text(f"🛠️ Cách xử lý: {row['CÁCH XỬ LÍ']}")
+            st.markdown("---")
     else:
         st.error("Xin lỗi, tôi không tìm thấy thông tin liên quan.")
