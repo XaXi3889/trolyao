@@ -4,7 +4,16 @@ import streamlit as st
 import pandas as pd
 from rapidfuzz import fuzz
 import base64   # 👈 thêm dòng này
+from gtts import gTTS
+import tempfile
 
+def speak_text(text):
+    """Chuyển văn bản thành giọng nói tiếng Việt và phát trên Streamlit"""
+    tts = gTTS(text=text, lang="vi")
+    with tempfile.NamedTemporaryFile(delete=True, suffix=".mp3") as tmp:
+        tts.save(tmp.name)
+        st.audio(tmp.name, format="audio/mp3")
+        
 st.set_page_config(page_title="Trợ lý ảo QCC 3", layout="centered")
 
 # === Hàm set background từ file ảnh local ===
@@ -87,12 +96,13 @@ if q_raw:
 
     matched = df[df.apply(row_match_all, axis=1)]
 
+    
     if not matched.empty:
         best = matched.iloc[0]
         st.success("✅ Tìm thấy kết quả phù hợp.")
         render_row(best, prefix="✅ ")
+        speak_text(f"Lỗi: {best['TB']}. Cách xử lý: {best['CXL']}")
         st.stop()
-
     # ---------- B2: Fuzzy ----------
     def fuzzy_score(row):
         combined = row["TB_clean"] + " " + row["MT_clean"]
@@ -103,7 +113,9 @@ if q_raw:
 
     if best["score"] < 60:
         st.warning("⚠️ Không tìm thấy kết quả phù hợp. Vui lòng nhập từ khóa đặc thù hơn.")
+   
     else:
         st.success("⭐ Kết quả gần nhất:")
         render_row(best, prefix="⭐ ")
+        speak_text(f"Lỗi: {best['TB']}. Cách xử lý: {best['CXL']}")
 
