@@ -96,13 +96,13 @@ if q_raw:
 
     matched = df[df.apply(row_match_all, axis=1)]
 
-    
     if not matched.empty:
         best = matched.iloc[0]
         st.success("✅ Tìm thấy kết quả phù hợp.")
         render_row(best, prefix="✅ ")
         speak_text(f"Lỗi: {best['TB']}. Cách xử lý: {best['CXL']}")
         st.stop()
+
     # ---------- B2: Fuzzy ----------
     def fuzzy_score(row):
         combined = row["TB_clean"] + " " + row["MT_clean"]
@@ -113,7 +113,6 @@ if q_raw:
 
     if best["score"] < 60:
         st.warning("⚠️ Không tìm thấy kết quả phù hợp. Vui lòng nhập từ khóa đặc thù hơn.")
-   
     else:
         st.success("⭐ Kết quả gần nhất:")
         render_row(best, prefix="⭐ ")
