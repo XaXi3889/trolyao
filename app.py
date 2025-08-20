@@ -26,7 +26,7 @@ def set_bg_from_local(image_file):
     st.markdown(css, unsafe_allow_html=True)
 
 # Gọi hàm để set background
-set_bg_from_local("sang.jpg")
+set_bg_from_local("bencang.jpg")
 
 st.title("🤖 Trợ lý ảo QCC 3")
 st.caption("Bạn chỉ cần gõ các từ khoá liên quan (không cần chính xác tuyệt đối).")
