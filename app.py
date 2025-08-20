@@ -1,120 +1,68 @@
-import re
-import unicodedata
 import streamlit as st
 import pandas as pd
 from rapidfuzz import fuzz
-import base64   # 👈 thêm dòng này
-from gtts import gTTS
-import tempfile
+import unicodedata
 
-def speak_text(text):
-    """Chuyển văn bản thành giọng nói tiếng Việt và phát trên Streamlit"""
-    tts = gTTS(text=text, lang="vi")
-    with tempfile.NamedTemporaryFile(delete=True, suffix=".mp3") as tmp:
-        tts.save(tmp.name)
-        st.audio(tmp.name, format="audio/mp3")
-        
-st.set_page_config(page_title="Trợ lý ảo QCC 3", layout="centered")
+# ========== Hàm xử lý dữ liệu ==========
+def normalize_text(text):
+    if pd.isna(text):
+        return ""
+    text = str(text)
+    text = unicodedata.normalize("NFKC", text)
+    return text.lower().strip()
 
-# === Hàm set background từ file ảnh local ===
-def set_bg_from_local(image_file):
-    with open(image_file, "rb") as f:
-        data = f.read()
-    encoded = base64.b64encode(data).decode()
-    css = f"""
-    <style>
-    .stApp {{
-        background-image: url("data:image/jpg;base64,{encoded}");
-        background-size: cover;
-        background-repeat: no-repeat;
-        background-position: center;
-        background-attachment: fixed;
-    }}
-    </style>
+def search_data(df, query, threshold=60):
+    query = normalize_text(query)
+    best_match = None
+    best_score = 0
+
+    for _, row in df.iterrows():
+        for col in ["TB", "CXL"]:
+            if col in row:
+                text = normalize_text(row[col])
+                score = fuzz.partial_ratio(query, text)
+                if score > best_score:
+                    best_score = score
+                    best_match = row
+
+    if best_score >= threshold:
+        return best_match
+    return None
+
+# ========== Hàm auto speak ==========
+def auto_speak(text):
+    js_code = f"""
+    <script>
+    var utterance = new SpeechSynthesisUtterance("{text}");
+    utterance.lang = "vi-VN";   // đọc tiếng Việt
+    speechSynthesis.cancel();   // hủy đọc cũ nếu có
+    speechSynthesis.speak(utterance);
+    </script>
     """
-    st.markdown(css, unsafe_allow_html=True)
+    st.markdown(js_code, unsafe_allow_html=True)
 
-# Gọi hàm để set background
-set_bg_from_local("bencang.jpg")
+# ========== Giao diện ==========
+st.set_page_config(page_title="Trợ lý ảo QCC3", layout="centered")
+st.title("🤖 Trợ lý ảo QCC3")
 
-st.title("🤖 Trợ lý ảo QCC 3")
-st.caption("Bạn chỉ cần gõ các từ khoá liên quan (không cần chính xác tuyệt đối).")
+uploaded_file = st.file_uploader("📂 Tải file Excel dữ liệu", type=["xlsx"])
 
-# ============ Helpers ============
-def normalize(s: str) -> str:
-    """Bỏ dấu, ký tự đặc biệt, viết thường, rút gọn khoảng trắng."""
-    s = unicodedata.normalize('NFD', str(s))
-    s = ''.join(ch for ch in s if unicodedata.category(ch) != 'Mn')
-    s = s.lower()
-    s = re.sub(r"[^a-z0-9\s]", " ", s)
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
+if uploaded_file:
+    df = pd.read_excel(uploaded_file)
 
-def render_row(row, prefix=""):
-    st.markdown(
-        f"""
-        <div style="padding:12px; border-radius:12px; background:#f8f9fa; margin-bottom:12px; box-shadow:0 2px 6px rgba(0,0,0,0.08)">
-            <p style="margin:0; font-weight:bold; color:#d6336c;">📌 Lỗi:</p>
-            <p style="margin:4px 0; font-size:15px;">{row['TB']} — {row['MT']}</p>
-            <p style="margin:0; font-weight:bold; color:#2f9e44;">🛠️ Cách xử lý:</p>
-            <p style="margin:4px 0; font-size:15px; white-space:pre-line;">{row['CXL']}</p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    query = st.text_input("🔍 Nhập từ khóa cần tra cứu:")
 
-@st.cache_data
-def load_data():
-    df = pd.read_excel("QCC3.xlsx", sheet_name=0, header=1)
-    # Chuẩn hoá tên cột
-    cols_norm = {normalize(c): c for c in df.columns}
-    col_bp  = cols_norm[[k for k in cols_norm if "bo phan" in k][0]]
-    col_tb  = cols_norm[[k for k in cols_norm if "thong bao loi" in k][0]]
-    col_mt  = cols_norm[[k for k in cols_norm if "mo ta loi" in k][0]]
-    col_cxl = cols_norm[[k for k in cols_norm if ("cach xu li" in k or "cach xu ly" in k)][0]]
+    if query:
+        result = search_data(df, query)
 
-    df = df.rename(columns={col_bp:"BP", col_tb:"TB", col_mt:"MT", col_cxl:"CXL"})
-    for c in ["BP", "TB", "MT", "CXL"]:
-        df[c] = df[c].astype(str).fillna("")
+        if result is not None:
+            st.markdown("### ✅ Kết quả tìm thấy")
+            st.write("**Lỗi:**", result["TB"])
+            st.write("**Cách xử lý:**", result["CXL"])
 
-    df["TB_clean"] = df["TB"].map(normalize)
-    df["MT_clean"] = df["MT"].map(normalize)
-    return df[["BP", "TB", "MT", "CXL", "TB_clean", "MT_clean"]]
+            # Auto đọc kết quả
+            speak_text = f"Lỗi: {result['TB']}. Cách xử lý: {result['CXL']}"
+            auto_speak(speak_text)
 
-df = load_data()
-
-# =================== Search ===================
-q_raw = st.text_input("Bạn muốn hỏi gì? (gõ từ khoá lỗi)", placeholder="VD: Ngáng mắt đèn xanh")
-if q_raw:
-    q = normalize(q_raw)
-    keywords = q.split()
-
-    # ---------- B1: Khớp từ khoá ----------
-    def row_match_all(row):
-        combined = row["TB_clean"] + " " + row["MT_clean"]
-        return all(kw in combined for kw in keywords)
-
-    matched = df[df.apply(row_match_all, axis=1)]
-
-    if not matched.empty:
-        best = matched.iloc[0]
-        st.success("✅ Tìm thấy kết quả phù hợp.")
-        render_row(best, prefix="✅ ")
-        speak_text(f"Lỗi: {best['TB']}. Cách xử lý: {best['CXL']}")
-        st.stop()
-
-    # ---------- B2: Fuzzy ----------
-    def fuzzy_score(row):
-        combined = row["TB_clean"] + " " + row["MT_clean"]
-        return fuzz.token_set_ratio(q, combined)
-
-    df["score"] = df.apply(fuzzy_score, axis=1)
-    best = df.sort_values("score", ascending=False).iloc[0]
-
-    if best["score"] < 60:
-        st.warning("⚠️ Không tìm thấy kết quả phù hợp. Vui lòng nhập từ khóa đặc thù hơn.")
-    else:
-        st.success("⭐ Kết quả gần nhất:")
-        render_row(best, prefix="⭐ ")
-        speak_text(f"Lỗi: {best['TB']}. Cách xử lý: {best['CXL']}")
-
+        else:
+            st.warning("❌ Không tìm thấy kết quả phù hợp")
