@@ -3,7 +3,9 @@ import unicodedata
 import streamlit as st
 import pandas as pd
 from rapidfuzz import fuzz
-import base64   # 👈 thêm dòng này
+import base64
+from gtts import gTTS   # 👈 dùng Google Text-to-Speech
+import os
 
 st.set_page_config(page_title="Trợ lý ảo QCC 3", layout="centered")
 
@@ -11,7 +13,7 @@ st.set_page_config(page_title="Trợ lý ảo QCC 3", layout="centered")
 def set_bg_from_local(image_file):
     with open(image_file, "rb") as f:
         data = f.read()
-    encoded = base64.b64encode(data).decode()
+    encoded = base64.b64encode(f.read()).decode()
     css = f"""
     <style>
     .stApp {{
@@ -33,7 +35,6 @@ st.caption("Bạn chỉ cần gõ các từ khoá liên quan (không cần chín
 
 # ============ Helpers ============
 def normalize(s: str) -> str:
-    """Bỏ dấu, ký tự đặc biệt, viết thường, rút gọn khoảng trắng."""
     s = unicodedata.normalize('NFD', str(s))
     s = ''.join(ch for ch in s if unicodedata.category(ch) != 'Mn')
     s = s.lower()
@@ -54,10 +55,21 @@ def render_row(row, prefix=""):
         unsafe_allow_html=True
     )
 
+def speak(text, filename="voice.mp3"):
+    tts = gTTS(text=text, lang="vi")
+    tts.save(filename)
+    # Auto play
+    audio_html = f"""
+    <audio autoplay>
+        <source src="data:audio/mp3;base64,{base64.b64encode(open(filename, "rb").read()).decode()}" type="audio/mp3">
+    </audio>
+    """
+    st.markdown(audio_html, unsafe_allow_html=True)
+    os.remove(filename)
+
 @st.cache_data
 def load_data():
     df = pd.read_excel("QCC3.xlsx", sheet_name=0, header=1)
-    # Chuẩn hoá tên cột
     cols_norm = {normalize(c): c for c in df.columns}
     col_bp  = cols_norm[[k for k in cols_norm if "bo phan" in k][0]]
     col_tb  = cols_norm[[k for k in cols_norm if "thong bao loi" in k][0]]
@@ -80,7 +92,6 @@ if q_raw:
     q = normalize(q_raw)
     keywords = q.split()
 
-    # ---------- B1: Khớp từ khoá ----------
     def row_match_all(row):
         combined = row["TB_clean"] + " " + row["MT_clean"]
         return all(kw in combined for kw in keywords)
@@ -91,9 +102,9 @@ if q_raw:
         best = matched.iloc[0]
         st.success("✅ Tìm thấy kết quả phù hợp.")
         render_row(best, prefix="✅ ")
+        speak(f"Lỗi: {best['TB']}. Mô tả: {best['MT']}. Cách xử lý: {best['CXL']}")
         st.stop()
 
-    # ---------- B2: Fuzzy ----------
     def fuzzy_score(row):
         combined = row["TB_clean"] + " " + row["MT_clean"]
         return fuzz.token_set_ratio(q, combined)
@@ -106,4 +117,4 @@ if q_raw:
     else:
         st.success("⭐ Kết quả gần nhất:")
         render_row(best, prefix="⭐ ")
-
+        speak(f"Lỗi: {best['TB']}. Mô tả: {best['MT']}. Cách xử lý: {best['CXL']}")
