@@ -16,7 +16,7 @@ def set_bg_from_local(image_file):
     <style>
     .stApp {{
         background-image: url("data:image/jpg;base64,{encoded}");
-        background-size: 50%;
+        background-size: cover;
         background-repeat: no-repeat;
         background-position: center;
         background-attachment: fixed;
