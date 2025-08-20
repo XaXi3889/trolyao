@@ -18,8 +18,8 @@ def search_data(df, query, threshold=60):
     best_score = 0
 
     for _, row in df.iterrows():
-        for col in ["TB", "CXL"]:  # tên cột trong Excel
-            if col in row:
+        for col in ["THÔNG BÁO LỖI", "MÔ TẢ LỖI"]:  # cột để so khớp
+            if col in df.columns:
                 text = normalize_text(row[col])
                 score = fuzz.partial_ratio(query, text)
                 if score > best_score:
@@ -50,9 +50,10 @@ st.title("🤖 Trợ lý ảo QCC3")
 uploaded_file = st.file_uploader("📂 Tải file Excel dữ liệu", type=["xlsx"])
 
 if uploaded_file:
-    df = pd.read_excel(uploaded_file)
+    # Bỏ qua dòng đầu tiên vì đó là tiêu đề "THỐNG KÊ LỖI VÀ CÁCH XỬ LÝ"
+    df = pd.read_excel(uploaded_file, header=1)
 
-    # Thêm input tìm kiếm
+    # Input tìm kiếm
     query = st.text_input("🔍 Nhập từ khóa cần tra cứu:")
 
     if query:
@@ -60,11 +61,12 @@ if uploaded_file:
 
         if result is not None:
             st.markdown("### ✅ Kết quả tìm thấy")
-            st.write("**Lỗi:**", result["TB"])
-            st.write("**Cách xử lý:**", result["CXL"])
+            st.write("**Thông báo lỗi:**", result["THÔNG BÁO LỖI"])
+            st.write("**Mô tả lỗi:**", result["MÔ TẢ LỖI"])
+            st.write("**Cách xử lí:**", result["CÁCH XỬ LÍ"])
 
             # Auto speak
-            speak_text = f"Lỗi: {result['TB']}. Cách xử lý: {result['CXL']}"
+            speak_text = f"Lỗi: {result['MÔ TẢ LỖI']}. Cách xử lí: {result['CÁCH XỬ LÍ']}"
             auto_speak(speak_text)
 
         else:
