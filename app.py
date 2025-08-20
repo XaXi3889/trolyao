@@ -4,6 +4,7 @@ import streamlit as st
 import pandas as pd
 from rapidfuzz import fuzz
 import base64
+from gtts import gTTS   # 👈 Thêm thư viện gTTS
 
 st.set_page_config(page_title="Trợ lý ảo QCC 3", layout="centered")
 
@@ -25,8 +26,8 @@ def set_bg_from_local(image_file):
     """
     st.markdown(css, unsafe_allow_html=True)
 
-# Gọi hàm để set background
-set_bg_from_local("bencang.jpg")   # Đặt file bencang.jpg cùng thư mục với app.py
+# Gọi hàm để set background (ảnh phải nằm cùng thư mục app.py)
+set_bg_from_local("bencang.jpg")
 
 st.title("🤖 Trợ lý ảo QCC 3")
 st.caption("Bạn chỉ cần gõ các từ khoá liên quan (không cần chính xác tuyệt đối).")
@@ -42,7 +43,7 @@ def normalize(s: str) -> str:
     return s
 
 def render_row(row, prefix=""):
-    text = f"Lỗi: {row['TB']} — {row['MT']}. Cách xử lý: {row['CXL']}"
+    # Nội dung hiển thị
     st.markdown(
         f"""
         <div style="padding:12px; border-radius:12px; background:#f8f9fa; margin-bottom:12px; box-shadow:0 2px 6px rgba(0,0,0,0.08)">
@@ -56,16 +57,11 @@ def render_row(row, prefix=""):
     )
 
     # === TTS tự động đọc ===
-    st.markdown(
-        f"""
-        <script>
-        var msg = new SpeechSynthesisUtterance("{text}");
-        msg.lang = "vi-VN";
-        window.speechSynthesis.speak(msg);
-        </script>
-        """,
-        unsafe_allow_html=True
-    )
+    text = f"Lỗi: {row['TB']} — {row['MT']}. Cách xử lý: {row['CXL']}"
+    tts = gTTS(text=text, lang="vi")
+    tts.save("tts_output.mp3")
+    with open("tts_output.mp3", "rb") as f:
+        st.audio(f.read(), format="audio/mp3", autoplay=True)
 
 @st.cache_data
 def load_data():
