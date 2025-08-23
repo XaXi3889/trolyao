@@ -111,6 +111,29 @@ with tab2:
                 st.success(f"🎧 Bạn đã nói: **{q_raw}**")
             except:
                 st.error("❌ Không nhận diện được giọng nói, vui lòng thử lại.")
+from st_mic_recorder import mic_recorder
+
+    st.subheader("🎙️ Hoặc bấm để nói trực tiếp")
+    audio = mic_recorder(
+        start_prompt="Bấm để nói 🎤",
+        stop_prompt="Dừng 🛑",
+        just_once=True,
+        use_container_width=True
+    )
+
+    if audio:
+        wav_file = "temp.wav"
+        with open(wav_file, "wb") as f:
+            f.write(audio["bytes"])
+
+        r = sr.Recognizer()
+        with sr.AudioFile(wav_file) as source:
+            audio_data = r.record(source)
+            try:
+                q_raw = r.recognize_google(audio_data, language="vi-VN")
+                st.success(f"🗣️ Bạn vừa nói: **{q_raw}**")
+            except:
+                st.error("❌ Không nhận diện được giọng nói, thử lại nhé.")
 
 # =================== Search ===================
 if q_raw:
