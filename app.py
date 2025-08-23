@@ -4,7 +4,10 @@ import streamlit as st
 import pandas as pd
 from rapidfuzz import fuzz
 import base64
-from gtts import gTTS   # 👈 Thêm thư viện gTTS
+from gtts import gTTS
+import speech_recognition as sr
+from io import BytesIO
+from pydub import AudioSegment
 
 st.set_page_config(page_title="Trợ lý ảo QCC 3", layout="centered")
 
@@ -26,11 +29,11 @@ def set_bg_from_local(image_file):
     """
     st.markdown(css, unsafe_allow_html=True)
 
-# Gọi hàm để set background (ảnh phải nằm cùng thư mục app.py)
+# Gọi hàm để set background
 set_bg_from_local("bencang.jpg")
 
 st.title("🤖 Trợ lý ảo QCC 3")
-st.caption("Bạn chỉ cần gõ các từ khoá liên quan (không cần chính xác tuyệt đối).")
+st.caption("Bạn có thể gõ từ khoá hoặc dùng giọng nói để tra cứu.")
 
 # ============ Helpers ============
 def normalize(s: str) -> str:
@@ -83,8 +86,33 @@ def load_data():
 
 df = load_data()
 
+# =================== Input ===================
+tab1, tab2 = st.tabs(["⌨️ Gõ từ khoá", "🎙️ Giọng nói"])
+
+with tab1:
+    q_raw = st.text_input("Bạn muốn hỏi gì?", placeholder="VD: Ngáng mắt đèn xanh")
+
+with tab2:
+    audio_file = st.file_uploader("Thu âm giọng nói (định dạng WAV/MP3)", type=["wav", "mp3"])
+    q_raw = None
+    if audio_file:
+        # Lưu file tạm
+        sound = AudioSegment.from_file(audio_file)
+        wav_io = BytesIO()
+        sound.export(wav_io, format="wav")
+        wav_io.seek(0)
+
+        # Nhận diện giọng nói
+        r = sr.Recognizer()
+        with sr.AudioFile(wav_io) as source:
+            audio = r.record(source)
+            try:
+                q_raw = r.recognize_google(audio, language="vi-VN")
+                st.success(f"🎧 Bạn đã nói: **{q_raw}**")
+            except:
+                st.error("❌ Không nhận diện được giọng nói, vui lòng thử lại.")
+
 # =================== Search ===================
-q_raw = st.text_input("Bạn muốn hỏi gì? (gõ từ khoá lỗi)", placeholder="VD: Ngáng mắt đèn xanh")
 if q_raw:
     q = normalize(q_raw)
     keywords = q.split()
@@ -111,7 +139,7 @@ if q_raw:
     best = df.sort_values("score", ascending=False).iloc[0]
 
     if best["score"] < 60:
-        st.warning("⚠️ Không tìm thấy kết quả phù hợp. Vui lòng nhập từ khóa đặc thù hơn.")
+        st.warning("⚠️ Không tìm thấy kết quả phù hợp. Vui lòng nhập/tìm lại từ khóa đặc thù hơn.")
     else:
         st.success("⭐ Kết quả gần nhất:")
         render_row(best, prefix="⭐ ")
