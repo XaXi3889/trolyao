@@ -58,10 +58,10 @@ def render_row(row, prefix=""):
 
     # === TTS tự động đọc ===
     text = f"Lỗi: {row['TB']} — {row['MT']}. Cách xử lý: {row['CXL']}"
-    #tts = gTTS(text=text, lang="vi")
-    #tts.save("tts_output.mp3")
-    #with open("tts_output.mp3", "rb") as f:
-        #st.audio(f.read(), format="audio/mp3", autoplay=True)
+    tts = gTTS(text=text, lang="vi")
+    tts.save("tts_output.mp3")
+    with open("tts_output.mp3", "rb") as f:
+        st.audio(f.read(), format="audio/mp3", autoplay=True)
 
 @st.cache_data
 def load_data():
